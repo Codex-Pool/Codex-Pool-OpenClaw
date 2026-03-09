@@ -13,6 +13,7 @@
 ### Task 1: 写失败测试锁定 `assistant` 历史兼容
 
 **Files:**
+
 - Modify: `tests/provider-request.test.js`
 - Test: `tests/provider-request.test.js`
 
@@ -42,6 +43,7 @@ Expected: PASS
 ### Task 2: 写失败测试锁定 `assistant toolCall` 与 `toolResult`
 
 **Files:**
+
 - Modify: `tests/provider-request.test.js`
 - Modify: `src/provider/request.js`
 
@@ -75,6 +77,7 @@ Expected: PASS
 ### Task 3: 补图片/混合内容兼容
 
 **Files:**
+
 - Modify: `tests/provider-request.test.js`
 - Modify: `src/provider/request.js`
 
@@ -104,6 +107,7 @@ Expected: PASS
 ### Task 4: 全量回归与运行时复核
 
 **Files:**
+
 - Modify: `src/provider/request.js`
 - Test: `tests/provider-request.test.js`
 

@@ -13,6 +13,7 @@
 ### Task 1: 写失败测试锁定 `tools` 透传
 
 **Files:**
+
 - Modify: `tests/provider-request.test.js`
 - Modify: `src/provider/request.js`
 
@@ -42,6 +43,7 @@ Expected: PASS
 ### Task 2: 写失败测试锁定 `temperature` 与 `reasoning clamp`
 
 **Files:**
+
 - Modify: `tests/provider-request.test.js`
 - Modify: `src/provider/request.js`
 
@@ -74,6 +76,7 @@ Expected: PASS
 ### Task 3: 写失败测试锁定 `session_id` header
 
 **Files:**
+
 - Modify: `tests/provider-auth.test.js`
 - Modify: `src/provider/auth.js`
 - Modify: `src/provider/stream.js`
@@ -106,6 +109,7 @@ Expected: PASS
 ### Task 4: 全量回归与差异审计
 
 **Files:**
+
 - Modify: `src/provider/request.js`
 - Modify: `src/provider/auth.js`
 - Modify: `src/provider/stream.js`

@@ -13,6 +13,7 @@
 ### Task 1: 初始化工程骨架
 
 **Files:**
+
 - Create: `package.json`
 - Create: `vitest.config.js`
 - Create: `.gitignore`
@@ -52,6 +53,7 @@ git commit -m "chore: scaffold codex-pool openclaw provider repo"
 ### Task 2: 先写失败测试锁定认证行为
 
 **Files:**
+
 - Create: `tests/provider-auth.test.js`
 - Create: `src/provider/auth.js`
 
@@ -93,6 +95,7 @@ git commit -m "test: lock codex-pool auth header behavior"
 ### Task 3: 先写失败测试锁定 URL 与请求体
 
 **Files:**
+
 - Create: `tests/provider-request.test.js`
 - Create: `src/provider/request.js`
 
@@ -133,6 +136,7 @@ git commit -m "test: lock codex-pool request construction"
 ### Task 4: 先写失败测试锁定 SSE 流式语义
 
 **Files:**
+
 - Create: `tests/provider-stream.test.js`
 - Create: `src/provider/stream.js`
 - Modify: `src/provider/request.js`
@@ -175,6 +179,7 @@ git commit -m "feat: implement codex-pool streaming provider core"
 ### Task 5: 接入 OpenClaw 注册入口
 
 **Files:**
+
 - Create: `src/plugin/register.js`
 - Create: `src/index.js`
 - Modify: `README.md`
@@ -215,6 +220,7 @@ git commit -m "feat: register codex-pool custom api provider"
 ### Task 6: 写 OpenClaw 接入说明与 smoke 流程
 
 **Files:**
+
 - Modify: `README.md`
 - Create: `docs/plans/2026-03-09-openclaw-smoke-checklist.md`
 
@@ -251,6 +257,7 @@ git commit -m "docs: add openclaw integration and smoke checklist"
 ### Task 7: 最终验证
 
 **Files:**
+
 - Verify only
 
 **Step 1: 安装依赖**
@@ -276,4 +283,3 @@ Expected: 工作区干净或仅有你预期的未提交改动
 - provider 名称
 - 关键配置项
 - smoke 命令
-

@@ -13,6 +13,7 @@
 ### Task 1: 补插件包清单
 
 **Files:**
+
 - Modify: `package.json`
 - Create: `openclaw.plugin.json`
 - Test: `tests/openclaw-package.test.js`
@@ -46,6 +47,7 @@ Expected: PASS
 ### Task 2: 先写失败测试锁定插件入口注册行为
 
 **Files:**
+
 - Create: `tests/openclaw-plugin.test.js`
 - Create: `src/openclaw-plugin.js`
 
@@ -76,6 +78,7 @@ Expected: PASS
 ### Task 3: 先写失败测试锁定 provider auth 输出
 
 **Files:**
+
 - Create: `tests/provider-auth-flow.test.js`
 - Create: `src/openclaw/provider-auth.js`
 
@@ -111,6 +114,7 @@ Expected: PASS
 ### Task 4: 把 provider auth 接到插件入口
 
 **Files:**
+
 - Modify: `src/openclaw-plugin.js`
 - Modify: `tests/openclaw-plugin.test.js`
 
@@ -140,6 +144,7 @@ Expected: PASS
 ### Task 5: 更新 README 与 smoke 清单
 
 **Files:**
+
 - Modify: `README.md`
 - Modify: `docs/plans/2026-03-09-openclaw-smoke-checklist.md`
 

@@ -8,11 +8,71 @@ const DEFAULT_CONTEXT_WINDOW = 272000;
 const DEFAULT_MAX_TOKENS = 32768;
 const DEFAULT_API = OPENCLAW_COMPAT_API;
 
-function normalizeText(value) {
+type ProviderPrompter = {
+  text(options: {
+    message: string;
+    initialValue?: string;
+    placeholder?: string;
+    validate?: (value: string) => string | undefined;
+  }): Promise<string>;
+};
+
+type ProviderAuthContext = {
+  prompter: ProviderPrompter;
+};
+
+type ModelDefinition = {
+  id: string;
+  name: string;
+  api: string;
+  reasoning: boolean;
+  input: string[];
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+  };
+  contextWindow: number;
+  maxTokens: number;
+};
+
+type ProviderAuthResult = {
+  profiles: Array<{
+    profileId: string;
+    credential: {
+      type: "token";
+      provider: string;
+      token: string;
+    };
+  }>;
+  configPatch: {
+    models: {
+      providers: Record<
+        string,
+        {
+          baseUrl: string;
+          apiKey: string;
+          api: string;
+          models: ModelDefinition[];
+        }
+      >;
+    };
+    agents: {
+      defaults: {
+        models: Record<string, Record<string, never>>;
+      };
+    };
+  };
+  defaultModel: string;
+  notes: string[];
+};
+
+function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-function buildModelDefinition(modelId) {
+function buildModelDefinition(modelId: string): ModelDefinition {
   return {
     id: modelId,
     name: modelId,
@@ -25,7 +85,7 @@ function buildModelDefinition(modelId) {
   };
 }
 
-function parseModelIds(raw) {
+function parseModelIds(raw: string): string[] {
   const normalized = raw
     .split(/[\n,]/g)
     .map((entry) => entry.trim())
@@ -34,7 +94,7 @@ function parseModelIds(raw) {
   return Array.from(new Set(normalized));
 }
 
-export function normalizeCodexPoolBaseUrl(rawValue) {
+export function normalizeCodexPoolBaseUrl(rawValue: unknown): string {
   let normalized = normalizeText(rawValue) || DEFAULT_BASE_URL;
   normalized = normalized.replace(/\/+$/, "");
   normalized = normalized.replace(/\/backend-api\/codex\/responses$/i, "");
@@ -47,7 +107,11 @@ export function buildCodexPoolProviderAuthResult({
   baseUrl,
   apiKey,
   modelIds
-}) {
+}: {
+  baseUrl: string;
+  apiKey: string;
+  modelIds: string[];
+}): ProviderAuthResult {
   const normalizedBaseUrl = normalizeCodexPoolBaseUrl(baseUrl);
   const normalizedModelIds = modelIds.length > 0 ? modelIds : DEFAULT_MODEL_IDS;
   const defaultModel = `${DEFAULT_PROVIDER_ID}/${normalizedModelIds[0]}`;
@@ -90,7 +154,9 @@ export function buildCodexPoolProviderAuthResult({
   };
 }
 
-export async function runCodexPoolProviderAuth(ctx) {
+export async function runCodexPoolProviderAuth(
+  ctx: ProviderAuthContext
+): Promise<ProviderAuthResult> {
   const baseUrl = normalizeText(
     await ctx.prompter.text({
       message: "Codex-Pool base URL",
@@ -103,14 +169,17 @@ export async function runCodexPoolProviderAuth(ctx) {
       message: "Codex-Pool API key",
       placeholder: "cp_xxx",
       validate: (value) =>
-        normalizeText(value).startsWith("cp_") ? undefined : "Must start with cp_"
+        normalizeText(value).startsWith("cp_")
+          ? undefined
+          : "Must start with cp_"
     })
   );
   const modelInput = normalizeText(
     await ctx.prompter.text({
       message: "Model IDs (comma-separated)",
       initialValue: DEFAULT_MODEL_IDS.join(", "),
-      validate: (value) => (parseModelIds(normalizeText(value)).length > 0 ? undefined : "Required")
+      validate: (value) =>
+        parseModelIds(normalizeText(value)).length > 0 ? undefined : "Required"
     })
   );
 

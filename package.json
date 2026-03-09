@@ -1,27 +1,57 @@
 {
   "name": "codex-pool-openclaw",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
-  "main": "./index.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "openclaw.plugin.json",
+    "package.json"
+  ],
   "exports": {
-    ".": "./index.js",
-    "./preload": "./src/preload.js"
+    ".": "./dist/index.js",
+    "./preload": "./dist/src/preload.js"
   },
   "openclaw": {
     "extensions": [
-      "./src/openclaw-plugin.js"
+      "./dist/src/openclaw-plugin.js"
     ]
   },
   "description": "OpenClaw custom provider/plugin for Codex-Pool Codex-style requests",
+  "packageManager": "npm@11.8.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "smoke:dist": "npm run build && vitest run --config vitest.dist.config.ts",
+    "ci": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run smoke:dist"
   },
   "dependencies": {
     "partial-json": "^0.1.7"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.5.2",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^10.0.3",
+    "globals": "^17.4.0",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1",
     "vitest": "^3.2.4"
   }
 }

@@ -189,7 +189,9 @@ describe("buildCodexPoolRequestBody", () => {
           {
             role: "toolResult",
             toolCallId: "call_vision|fc_vision",
-            content: [{ type: "image", mimeType: "image/png", data: "dG9vbA==" }]
+            content: [
+              { type: "image", mimeType: "image/png", data: "dG9vbA==" }
+            ]
           }
         ]
       },

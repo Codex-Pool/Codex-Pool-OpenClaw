@@ -4,11 +4,40 @@ import {
 } from "./plugin/register.js";
 import { runCodexPoolProviderAuth } from "./openclaw/provider-auth.js";
 
-let runtimeRegistry = null;
-let runtimeRegistryError = null;
+type ProviderAuthRun = typeof runCodexPoolProviderAuth;
+
+type ProviderRegistration = {
+  id: string;
+  label: string;
+  docsPath: string;
+  auth: Array<{
+    id: string;
+    label: string;
+    hint: string;
+    kind: "custom";
+    run: ProviderAuthRun;
+  }>;
+};
+
+type OpenClawPluginApi = {
+  registerProvider(provider: ProviderRegistration): void;
+};
+
+type RuntimeRegistry = {
+  getApiProvider(api: string): unknown;
+  registerApiProvider(provider: unknown, source?: string): void;
+};
+
+const registerCodexPoolCodexProviderCompat =
+  registerCodexPoolCodexProvider as unknown as (options: {
+    registry: RuntimeRegistry;
+  }) => boolean;
+
+let runtimeRegistry: RuntimeRegistry | null = null;
+let runtimeRegistryError: unknown = null;
 
 try {
-  runtimeRegistry = loadPiAiRegistrySync();
+  runtimeRegistry = loadPiAiRegistrySync() as RuntimeRegistry;
 } catch (error) {
   runtimeRegistryError = error;
 }
@@ -22,7 +51,7 @@ function ensureRuntimeApiRegistered() {
     throw new Error("Codex-Pool runtime registry is unavailable");
   }
 
-  registerCodexPoolCodexProvider({
+  registerCodexPoolCodexProviderCompat({
     registry: runtimeRegistry
   });
 }
@@ -31,7 +60,7 @@ const codexPoolProviderPlugin = {
   id: "codex-pool-openclaw",
   name: "Codex-Pool OpenClaw",
   description: "OpenClaw provider plugin for Codex-Pool Codex-style requests",
-  register(api) {
+  register(api: OpenClawPluginApi) {
     ensureRuntimeApiRegistered();
 
     api.registerProvider({

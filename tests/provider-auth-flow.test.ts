@@ -7,11 +7,13 @@ import {
 
 describe("normalizeCodexPoolBaseUrl", () => {
   test("会把 backend-api 变体收敛到 provider 级 baseUrl", () => {
-    expect(normalizeCodexPoolBaseUrl("http://127.0.0.1:8091/backend-api/")).toBe(
-      "http://127.0.0.1:8091"
-    );
     expect(
-      normalizeCodexPoolBaseUrl("http://127.0.0.1:8091/backend-api/codex/responses")
+      normalizeCodexPoolBaseUrl("http://127.0.0.1:8091/backend-api/")
+    ).toBe("http://127.0.0.1:8091");
+    expect(
+      normalizeCodexPoolBaseUrl(
+        "http://127.0.0.1:8091/backend-api/codex/responses"
+      )
     ).toBe("http://127.0.0.1:8091");
   });
 });
@@ -51,11 +53,13 @@ describe("runCodexPoolProviderAuth", () => {
       api: "openai-codex-responses"
     });
     expect(
-      result.configPatch.models.providers["codex-pool"].models.map((model) => model.id)
+      result.configPatch.models.providers["codex-pool"].models.map(
+        (model) => model.id
+      )
     ).toEqual(["gpt-5.4", "gpt-5.4-mini"]);
     expect(result.defaultModel).toBe("codex-pool/gpt-5.4");
-    expect(result.notes.some((note) => note.includes("openclaw logs --follow"))).toBe(
-      true
-    );
+    expect(
+      result.notes.some((note) => note.includes("openclaw logs --follow"))
+    ).toBe(true);
   });
 });
