@@ -36,4 +36,4 @@ jobs:
         run: npm run build
 
       - name: Smoke dist output
-        run: vitest run tests/dist-smoke.test.ts
+        run: npm run smoke:dist

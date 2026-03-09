@@ -21,6 +21,14 @@
     ]
   },
   "description": "OpenClaw custom provider/plugin for Codex-Pool Codex-style requests",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Codex-Pool/Codex-Pool-OpenClaw.git"
+  },
+  "homepage": "https://github.com/Codex-Pool/Codex-Pool-OpenClaw#readme",
+  "bugs": {
+    "url": "https://github.com/Codex-Pool/Codex-Pool-OpenClaw/issues"
+  },
   "packageManager": "npm@11.8.0",
   "engines": {
     "node": ">=20"

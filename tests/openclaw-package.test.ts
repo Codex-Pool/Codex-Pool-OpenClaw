@@ -13,6 +13,11 @@ async function readJson(relativePath) {
   return JSON.parse(raw);
 }
 
+async function readText(relativePath) {
+  const absolutePath = path.join(repoRoot, relativePath);
+  return fs.readFile(absolutePath, "utf8");
+}
+
 async function pathExists(relativePath) {
   try {
     await fs.access(path.join(repoRoot, relativePath));
@@ -139,6 +144,8 @@ describe("OpenClaw package metadata", () => {
 
   test("包元数据与发布工作流已准备好 tag 驱动 npm publish", async () => {
     const pkg = await readJson("package.json");
+    const ciWorkflow = await readText(".github/workflows/ci.yml");
+    const publishWorkflow = await readText(".github/workflows/publish.yml");
 
     expect(pkg.private).toBe(false);
     expect(pkg.files).toEqual([
@@ -149,6 +156,16 @@ describe("OpenClaw package metadata", () => {
     ]);
     expect(pkg.publishConfig).toEqual({
       access: "public"
+    });
+    expect(pkg.repository).toEqual({
+      type: "git",
+      url: "git+https://github.com/Codex-Pool/Codex-Pool-OpenClaw.git"
+    });
+    expect(pkg.homepage).toBe(
+      "https://github.com/Codex-Pool/Codex-Pool-OpenClaw#readme"
+    );
+    expect(pkg.bugs).toEqual({
+      url: "https://github.com/Codex-Pool/Codex-Pool-OpenClaw/issues"
     });
     expect(pkg.packageManager).toBe("npm@11.8.0");
     expect(pkg.engines).toEqual({
@@ -163,5 +180,7 @@ describe("OpenClaw package metadata", () => {
       true
     );
     await expect(pathExists("tests/dist-smoke.test.ts")).resolves.toBe(true);
+    expect(ciWorkflow).toContain("run: npm run smoke:dist");
+    expect(publishWorkflow).toContain("run: npm run smoke:dist");
   });
 });
