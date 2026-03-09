@@ -192,6 +192,9 @@ describe("OpenClaw package metadata", () => {
     const publishWorkflow = await readText(".github/workflows/publish.yml");
 
     expect(publishWorkflow).toContain("fetch-depth: 0");
+    expect(publishWorkflow).toContain(
+      `PACKAGE_VERSION="$(node -p "require('./package.json').version")"`
+    );
     expect(publishWorkflow).toContain("git fetch origin main --depth=1");
     expect(publishWorkflow).toContain(
       'MAIN_SHA="$(git rev-parse origin/main)"'
