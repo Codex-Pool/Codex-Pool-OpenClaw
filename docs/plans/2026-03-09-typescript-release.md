@@ -13,6 +13,7 @@
 ### Task 1: 建立 TypeScript 与质量工具链
 
 **Files:**
+
 - Create: `tsconfig.json`
 - Create: `eslint.config.js`
 - Create: `.prettierrc.json`
@@ -53,6 +54,7 @@ Expected: 初始阶段若因尚未迁移 TS 而失败，记录失败并继续下
 ### Task 2: 迁移源码入口到 TypeScript
 
 **Files:**
+
 - Create: `index.ts`
 - Create: `src/index.ts`
 - Create: `src/preload.ts`
@@ -85,6 +87,7 @@ Expected: PASS
 ### Task 3: 迁移 provider 基础模块到 TypeScript
 
 **Files:**
+
 - Create/Replace: `src/provider/auth.ts`
 - Create/Replace: `src/provider/json-parse.ts`
 - Create/Replace: `src/provider/sanitize-unicode.ts`
@@ -121,6 +124,7 @@ Expected: PASS
 ### Task 4: 迁移 request / message transform 模块到 TypeScript
 
 **Files:**
+
 - Create/Replace: `src/provider/request.ts`
 - Create/Replace: `src/provider/transform-messages.ts`
 - Test: `tests/provider-request.test.js`
@@ -152,6 +156,7 @@ Expected: PASS
 ### Task 5: 迁移 stream / register / auth-flow 模块到 TypeScript
 
 **Files:**
+
 - Create/Replace: `src/provider/stream.ts`
 - Create/Replace: `src/plugin/register.ts`
 - Create/Replace: `src/openclaw/provider-auth.ts`
@@ -186,6 +191,7 @@ Expected: PASS
 ### Task 6: 迁移测试本身到 TypeScript 并补 coverage
 
 **Files:**
+
 - Modify/Rename: `tests/*.test.ts`
 - Modify: `vitest.config.js`
 - Modify: `package.json`
@@ -215,6 +221,7 @@ Expected: PASS，并生成覆盖率输出
 ### Task 7: 建立 GitHub Actions CI
 
 **Files:**
+
 - Create: `.github/workflows/ci.yml`
 - Modify: `package.json`
 
@@ -254,6 +261,7 @@ Expected: PASS
 ### Task 8: 建立 tag 驱动 npm publish
 
 **Files:**
+
 - Create: `.github/workflows/publish.yml`
 - Modify: `package.json`
 - Modify: `README.md`
@@ -298,6 +306,7 @@ Expected: PASS
 ### Task 9: 全量验证与发布前收口
 
 **Files:**
+
 - Verify only
 
 **Step 1: 运行全量质量门禁**
