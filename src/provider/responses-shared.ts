@@ -3,7 +3,9 @@ import { parseStreamingJson } from "./json-parse.js";
 import { sanitizeSurrogates } from "./sanitize-unicode.js";
 import { transformMessages } from "./transform-messages.js";
 
-function shortHash(str) {
+type AnyRecord = Record<string, any>;
+
+function shortHash(str: string): string {
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
 
@@ -23,14 +25,19 @@ function shortHash(str) {
   return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
 }
 
-function getModelInputs(model) {
+function getModelInputs(model: AnyRecord): string[] {
   return Array.isArray(model.input) ? model.input : ["text"];
 }
 
-export function convertResponsesMessages(model, context, allowedToolCallProviders, options) {
-  const messages = [];
+export function convertResponsesMessages(
+  model: AnyRecord,
+  context: AnyRecord,
+  allowedToolCallProviders: Set<string>,
+  options?: { includeSystemPrompt?: boolean }
+): AnyRecord[] {
+  const messages: AnyRecord[] = [];
   const modelInputs = getModelInputs(model);
-  const normalizeToolCallId = (id) => {
+  const normalizeToolCallId = (id: string): string => {
     if (!allowedToolCallProviders.has(model.provider)) {
       return id;
     }
@@ -48,9 +55,13 @@ export function convertResponsesMessages(model, context, allowedToolCallProvider
     }
 
     let normalizedCallId =
-      sanitizedCallId.length > 64 ? sanitizedCallId.slice(0, 64) : sanitizedCallId;
+      sanitizedCallId.length > 64
+        ? sanitizedCallId.slice(0, 64)
+        : sanitizedCallId;
     let normalizedItemId =
-      sanitizedItemId.length > 64 ? sanitizedItemId.slice(0, 64) : sanitizedItemId;
+      sanitizedItemId.length > 64
+        ? sanitizedItemId.slice(0, 64)
+        : sanitizedItemId;
 
     normalizedCallId = normalizedCallId.replace(/_+$/, "");
     normalizedItemId = normalizedItemId.replace(/_+$/, "");
@@ -60,7 +71,7 @@ export function convertResponsesMessages(model, context, allowedToolCallProvider
 
   const transformedMessages = transformMessages(
     context.messages ?? [],
-    model,
+    model as AnyRecord,
     normalizeToolCallId
   );
   const includeSystemPrompt = options?.includeSystemPrompt ?? true;
@@ -80,10 +91,12 @@ export function convertResponsesMessages(model, context, allowedToolCallProvider
       if (typeof message.content === "string") {
         messages.push({
           role: "user",
-          content: [{ type: "input_text", text: sanitizeSurrogates(message.content) }]
+          content: [
+            { type: "input_text", text: sanitizeSurrogates(message.content) }
+          ]
         });
       } else {
-        const content = (message.content ?? []).map((item) => {
+        const content = (message.content ?? []).map((item: AnyRecord) => {
           if (item.type === "text") {
             return {
               type: "input_text",
@@ -98,7 +111,7 @@ export function convertResponsesMessages(model, context, allowedToolCallProvider
           };
         });
         const filteredContent = !modelInputs.includes("image")
-          ? content.filter((entry) => entry.type !== "input_image")
+          ? content.filter((entry: AnyRecord) => entry.type !== "input_image")
           : content;
 
         if (filteredContent.length === 0) {
@@ -111,7 +124,7 @@ export function convertResponsesMessages(model, context, allowedToolCallProvider
         });
       }
     } else if (message.role === "assistant") {
-      const output = [];
+      const output: AnyRecord[] = [];
       const assistantMessage = message;
       const isDifferentModel =
         assistantMessage.model !== model.id &&
@@ -154,7 +167,7 @@ export function convertResponsesMessages(model, context, allowedToolCallProvider
             itemId = undefined;
           }
 
-          const functionCall = {
+          const functionCall: AnyRecord = {
             type: "function_call",
             call_id: callId,
             name: block.name,
@@ -176,21 +189,25 @@ export function convertResponsesMessages(model, context, allowedToolCallProvider
       messages.push(...output);
     } else if (message.role === "toolResult") {
       const textResult = (message.content ?? [])
-        .filter((entry) => entry.type === "text")
-        .map((entry) => entry.text)
+        .filter((entry: AnyRecord) => entry.type === "text")
+        .map((entry: AnyRecord) => entry.text)
         .join("\n");
-      const hasImages = (message.content ?? []).some((entry) => entry.type === "image");
+      const hasImages = (message.content ?? []).some(
+        (entry: AnyRecord) => entry.type === "image"
+      );
       const hasText = textResult.length > 0;
       const [callId] = message.toolCallId.split("|");
 
       messages.push({
         type: "function_call_output",
         call_id: callId,
-        output: sanitizeSurrogates(hasText ? textResult : "(see attached image)")
+        output: sanitizeSurrogates(
+          hasText ? textResult : "(see attached image)"
+        )
       });
 
       if (hasImages && modelInputs.includes("image")) {
-        const contentParts = [
+        const contentParts: AnyRecord[] = [
           {
             type: "input_text",
             text: "Attached image(s) from tool result:"
@@ -220,7 +237,10 @@ export function convertResponsesMessages(model, context, allowedToolCallProvider
   return messages;
 }
 
-export function convertResponsesTools(tools, options) {
+export function convertResponsesTools(
+  tools: AnyRecord[] | undefined,
+  options?: { strict?: boolean | null }
+): AnyRecord[] {
   const strict = options?.strict === undefined ? false : options.strict;
 
   return (tools ?? []).map((tool) => ({
@@ -232,10 +252,16 @@ export function convertResponsesTools(tools, options) {
   }));
 }
 
-export async function processResponsesStream(openaiStream, output, stream, model, options) {
-  let currentItem = null;
-  let currentBlock = null;
-  const blocks = output.content;
+export async function processResponsesStream(
+  openaiStream: AsyncIterable<AnyRecord>,
+  output: AnyRecord,
+  stream: { push(event: AnyRecord): void },
+  model: AnyRecord,
+  options?: AnyRecord
+): Promise<void> {
+  let currentItem: AnyRecord | null = null;
+  let currentBlock: AnyRecord | null = null;
+  const blocks = output.content as AnyRecord[];
   const blockIndex = () => blocks.length - 1;
 
   for await (const event of openaiStream) {
@@ -246,12 +272,20 @@ export async function processResponsesStream(openaiStream, output, stream, model
         currentItem = item;
         currentBlock = { type: "thinking", thinking: "" };
         output.content.push(currentBlock);
-        stream.push({ type: "thinking_start", contentIndex: blockIndex(), partial: output });
+        stream.push({
+          type: "thinking_start",
+          contentIndex: blockIndex(),
+          partial: output
+        });
       } else if (item.type === "message") {
         currentItem = item;
         currentBlock = { type: "text", text: "" };
         output.content.push(currentBlock);
-        stream.push({ type: "text_start", contentIndex: blockIndex(), partial: output });
+        stream.push({
+          type: "text_start",
+          contentIndex: blockIndex(),
+          partial: output
+        });
       } else if (item.type === "function_call") {
         currentItem = item;
         currentBlock = {
@@ -262,7 +296,11 @@ export async function processResponsesStream(openaiStream, output, stream, model
           partialJson: item.arguments || ""
         };
         output.content.push(currentBlock);
-        stream.push({ type: "toolcall_start", contentIndex: blockIndex(), partial: output });
+        stream.push({
+          type: "toolcall_start",
+          contentIndex: blockIndex(),
+          partial: output
+        });
       }
     } else if (event.type === "response.reasoning_summary_part.added") {
       if (currentItem && currentItem.type === "reasoning") {
@@ -270,7 +308,10 @@ export async function processResponsesStream(openaiStream, output, stream, model
         currentItem.summary.push(event.part);
       }
     } else if (event.type === "response.reasoning_summary_text.delta") {
-      if (currentItem?.type === "reasoning" && currentBlock?.type === "thinking") {
+      if (
+        currentItem?.type === "reasoning" &&
+        currentBlock?.type === "thinking"
+      ) {
         currentItem.summary = currentItem.summary || [];
         const lastPart = currentItem.summary[currentItem.summary.length - 1];
 
@@ -286,7 +327,10 @@ export async function processResponsesStream(openaiStream, output, stream, model
         }
       }
     } else if (event.type === "response.reasoning_summary_part.done") {
-      if (currentItem?.type === "reasoning" && currentBlock?.type === "thinking") {
+      if (
+        currentItem?.type === "reasoning" &&
+        currentBlock?.type === "thinking"
+      ) {
         currentItem.summary = currentItem.summary || [];
         const lastPart = currentItem.summary[currentItem.summary.length - 1];
 
@@ -305,7 +349,10 @@ export async function processResponsesStream(openaiStream, output, stream, model
       if (currentItem?.type === "message") {
         currentItem.content = currentItem.content || [];
 
-        if (event.part.type === "output_text" || event.part.type === "refusal") {
+        if (
+          event.part.type === "output_text" ||
+          event.part.type === "refusal"
+        ) {
           currentItem.content.push(event.part);
         }
       }
@@ -348,7 +395,10 @@ export async function processResponsesStream(openaiStream, output, stream, model
         }
       }
     } else if (event.type === "response.function_call_arguments.delta") {
-      if (currentItem?.type === "function_call" && currentBlock?.type === "toolCall") {
+      if (
+        currentItem?.type === "function_call" &&
+        currentBlock?.type === "toolCall"
+      ) {
         currentBlock.partialJson += event.delta;
         currentBlock.arguments = parseStreamingJson(currentBlock.partialJson);
         stream.push({
@@ -359,7 +409,10 @@ export async function processResponsesStream(openaiStream, output, stream, model
         });
       }
     } else if (event.type === "response.function_call_arguments.done") {
-      if (currentItem?.type === "function_call" && currentBlock?.type === "toolCall") {
+      if (
+        currentItem?.type === "function_call" &&
+        currentBlock?.type === "toolCall"
+      ) {
         currentBlock.partialJson = event.arguments;
         currentBlock.arguments = parseStreamingJson(currentBlock.partialJson);
       }
@@ -367,7 +420,9 @@ export async function processResponsesStream(openaiStream, output, stream, model
       const item = event.item;
 
       if (item.type === "reasoning" && currentBlock?.type === "thinking") {
-        currentBlock.thinking = item.summary?.map((entry) => entry.text).join("\n\n") || "";
+        currentBlock.thinking =
+          item.summary?.map((entry: AnyRecord) => entry.text).join("\n\n") ||
+          "";
         currentBlock.thinkingSignature = JSON.stringify(item);
         stream.push({
           type: "thinking_end",
@@ -378,7 +433,9 @@ export async function processResponsesStream(openaiStream, output, stream, model
         currentBlock = null;
       } else if (item.type === "message" && currentBlock?.type === "text") {
         currentBlock.text = item.content
-          .map((entry) => (entry.type === "output_text" ? entry.text : entry.refusal))
+          .map((entry: AnyRecord) =>
+            entry.type === "output_text" ? entry.text : entry.refusal
+          )
           .join("");
         currentBlock.textSignature = item.id;
         stream.push({
@@ -400,13 +457,19 @@ export async function processResponsesStream(openaiStream, output, stream, model
           arguments: args
         };
         currentBlock = null;
-        stream.push({ type: "toolcall_end", contentIndex: blockIndex(), toolCall, partial: output });
+        stream.push({
+          type: "toolcall_end",
+          contentIndex: blockIndex(),
+          toolCall,
+          partial: output
+        });
       }
     } else if (event.type === "response.completed") {
       const response = event.response;
 
       if (response?.usage) {
-        const cachedTokens = response.usage.input_tokens_details?.cached_tokens || 0;
+        const cachedTokens =
+          response.usage.input_tokens_details?.cached_tokens || 0;
         output.usage = {
           input: (response.usage.input_tokens || 0) - cachedTokens,
           output: response.usage.output_tokens || 0,
@@ -417,7 +480,7 @@ export async function processResponsesStream(openaiStream, output, stream, model
         };
       }
 
-      calculateCost(model, output.usage);
+      calculateCost(model as AnyRecord & { id: string }, output.usage);
 
       if (options?.applyServiceTierPricing) {
         const serviceTier = response?.service_tier ?? options.serviceTier;
@@ -426,18 +489,25 @@ export async function processResponsesStream(openaiStream, output, stream, model
 
       output.stopReason = mapStopReason(response?.status);
 
-      if (output.content.some((block) => block.type === "toolCall") && output.stopReason === "stop") {
+      if (
+        output.content.some((block: AnyRecord) => block.type === "toolCall") &&
+        output.stopReason === "stop"
+      ) {
         output.stopReason = "toolUse";
       }
     } else if (event.type === "error") {
-      throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");
+      const detail =
+        event.message || event.code
+          ? `Error Code ${String(event.code ?? "unknown")}: ${String(event.message ?? "")}`.trim()
+          : "Unknown error";
+      throw new Error(detail);
     } else if (event.type === "response.failed") {
       throw new Error("Unknown error");
     }
   }
 }
 
-function mapStopReason(status) {
+function mapStopReason(status: string | undefined): string {
   if (!status) {
     return "stop";
   }

@@ -2,7 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 
 describe("registerCodexPoolCodexProvider", () => {
   test("默认 provider 会暴露独立的 stream 与 streamSimple", async () => {
-    const { createCodexPoolCodexProvider } = await import("../src/plugin/register.js");
+    const { createCodexPoolCodexProvider } =
+      await import("../src/plugin/register.js");
 
     const provider = createCodexPoolCodexProvider();
 
@@ -12,7 +13,8 @@ describe("registerCodexPoolCodexProvider", () => {
   });
 
   test("会判断哪些请求该走 Codex-Pool 兼容层", async () => {
-    const { shouldRouteThroughCodexPool } = await import("../src/plugin/register.js");
+    const { shouldRouteThroughCodexPool } =
+      await import("../src/plugin/register.js");
 
     expect(
       shouldRouteThroughCodexPool({
@@ -38,9 +40,8 @@ describe("registerCodexPoolCodexProvider", () => {
   });
 
   test("注册后会覆盖 openai-codex-responses 并保留 fallback", async () => {
-    const { createOpenClawCompatibleProvider, registerCodexPoolCodexProvider } = await import(
-      "../src/plugin/register.js"
-    );
+    const { createOpenClawCompatibleProvider, registerCodexPoolCodexProvider } =
+      await import("../src/plugin/register.js");
 
     const fallbackProvider = {
       api: "openai-codex-responses",
@@ -63,7 +64,9 @@ describe("registerCodexPoolCodexProvider", () => {
     });
 
     expect(registered).toBe(true);
-    expect(registry.getApiProvider).toHaveBeenCalledWith("openai-codex-responses");
+    expect(registry.getApiProvider).toHaveBeenCalledWith(
+      "openai-codex-responses"
+    );
     expect(registry.registerApiProvider).toHaveBeenCalledTimes(1);
 
     const provider = registry.registerApiProvider.mock.calls[0][0];
@@ -91,9 +94,17 @@ describe("registerCodexPoolCodexProvider", () => {
     const cpOptions = { apiKey: "cp_test_key" };
     const foreignOptions = { apiKey: "eyJ.jwt.token" };
 
-    expect(provider.streamSimple(codexPoolModel, context, cpOptions)).toBe("cp-simple");
-    expect(provider.streamSimple(foreignModel, context, foreignOptions)).toBe("fallback-simple");
-    expect(codexProvider.streamSimple).toHaveBeenCalledWith(codexPoolModel, context, cpOptions);
+    expect(provider.streamSimple(codexPoolModel, context, cpOptions)).toBe(
+      "cp-simple"
+    );
+    expect(provider.streamSimple(foreignModel, context, foreignOptions)).toBe(
+      "fallback-simple"
+    );
+    expect(codexProvider.streamSimple).toHaveBeenCalledWith(
+      codexPoolModel,
+      context,
+      cpOptions
+    );
     expect(fallbackProvider.streamSimple).toHaveBeenCalledWith(
       foreignModel,
       context,
@@ -102,10 +113,13 @@ describe("registerCodexPoolCodexProvider", () => {
   });
 
   test("显式禁止覆盖时，已有 provider 会跳过注册", async () => {
-    const { registerCodexPoolCodexProvider } = await import("../src/plugin/register.js");
+    const { registerCodexPoolCodexProvider } =
+      await import("../src/plugin/register.js");
 
     const registry = {
-      getApiProvider: vi.fn().mockReturnValue({ api: "openai-codex-responses" }),
+      getApiProvider: vi
+        .fn()
+        .mockReturnValue({ api: "openai-codex-responses" }),
       registerApiProvider: vi.fn()
     };
 
@@ -116,6 +130,32 @@ describe("registerCodexPoolCodexProvider", () => {
 
     expect(registered).toBe(false);
     expect(registry.registerApiProvider).not.toHaveBeenCalled();
+  });
+
+  test("没有 fallback 时会直接注册 codex provider", async () => {
+    const { registerCodexPoolCodexProvider } =
+      await import("../src/plugin/register.js");
+
+    const codexProvider = {
+      api: "openai-codex-responses",
+      stream: vi.fn(() => "cp-stream"),
+      streamSimple: vi.fn(() => "cp-simple")
+    };
+    const registry = {
+      getApiProvider: vi.fn().mockReturnValue(undefined),
+      registerApiProvider: vi.fn()
+    };
+
+    const registered = registerCodexPoolCodexProvider({
+      registry,
+      codexProvider
+    });
+
+    expect(registered).toBe(true);
+    expect(registry.registerApiProvider).toHaveBeenCalledWith(
+      codexProvider,
+      "codex-pool-openclaw"
+    );
   });
 });
 
@@ -144,7 +184,9 @@ describe("loadPiAiRegistry", () => {
 
     expect(imported).toEqual(["missing-module", "file:///fallback-pi-ai.js"]);
     expect(registry.getApiProvider).toBe(registryModule.getApiProvider);
-    expect(registry.registerApiProvider).toBe(registryModule.registerApiProvider);
+    expect(registry.registerApiProvider).toBe(
+      registryModule.registerApiProvider
+    );
   });
 
   test("全部候选都失败时抛出可读错误", async () => {
@@ -158,6 +200,68 @@ describe("loadPiAiRegistry", () => {
         }
       })
     ).rejects.toThrow("Unable to load @mariozechner/pi-ai runtime registry");
+  });
+});
+
+describe("loadPiAiRegistrySync", () => {
+  test("会按候选顺序同步 require 并返回 registry 接口", async () => {
+    const { loadPiAiRegistrySync } = await import("../src/plugin/register.js");
+
+    const imported = [];
+    const registryModule = {
+      getApiProvider: vi.fn(),
+      registerApiProvider: vi.fn()
+    };
+
+    const registry = loadPiAiRegistrySync({
+      candidateSpecifiers: ["missing-sync", "/tmp/fallback-pi-ai.js"],
+      requireModule: (specifier) => {
+        imported.push(specifier);
+
+        if (specifier === "/tmp/fallback-pi-ai.js") {
+          return registryModule;
+        }
+
+        throw new Error(`Cannot require ${specifier}`);
+      }
+    });
+
+    expect(imported).toEqual(["missing-sync", "/tmp/fallback-pi-ai.js"]);
+    expect(registry.getApiProvider).toBe(registryModule.getApiProvider);
+    expect(registry.registerApiProvider).toBe(
+      registryModule.registerApiProvider
+    );
+  });
+
+  test("同步候选都失败时抛出可读错误", async () => {
+    const { loadPiAiRegistrySync } = await import("../src/plugin/register.js");
+
+    expect(() =>
+      loadPiAiRegistrySync({
+        candidateSpecifiers: ["missing-sync-only"],
+        requireModule: () => {
+          throw new Error("missing sync");
+        }
+      })
+    ).toThrow(
+      "Unable to synchronously load @mariozechner/pi-ai runtime registry"
+    );
+  });
+});
+
+describe("registerCodexPoolCodexProviderInPiAi", () => {
+  test("传入 registry 时会委托给 register 逻辑完成注册", async () => {
+    const registry = {
+      getApiProvider: vi.fn().mockReturnValue(undefined),
+      registerApiProvider: vi.fn()
+    };
+    const { registerCodexPoolCodexProviderInPiAi } =
+      await import("../src/plugin/register.js");
+
+    const registered = await registerCodexPoolCodexProviderInPiAi({ registry });
+
+    expect(registered).toBe(true);
+    expect(registry.registerApiProvider).toHaveBeenCalledTimes(1);
   });
 });
 

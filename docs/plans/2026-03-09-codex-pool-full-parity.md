@@ -13,6 +13,7 @@
 ### Task 1: 写 request/message parity 红灯测试
 
 **Files:**
+
 - Modify: `tests/provider-request.test.js`
 - Modify: `src/provider/request.js`
 
@@ -45,6 +46,7 @@ Expected: PASS
 ### Task 2: 写 auth parity 红灯测试
 
 **Files:**
+
 - Modify: `tests/provider-auth.test.js`
 - Modify: `src/provider/auth.js`
 
@@ -76,6 +78,7 @@ Expected: PASS
 ### Task 3: 写 stream parity 红灯测试
 
 **Files:**
+
 - Modify: `tests/provider-stream.test.js`
 - Modify: `src/provider/stream.js`
 
@@ -110,6 +113,7 @@ Expected: PASS
 ### Task 4: 对齐 provider 导出与 `streamSimple`
 
 **Files:**
+
 - Modify: `src/provider/stream.js`
 - Modify: `src/plugin/register.js`
 - Modify: `src/index.js`
@@ -140,6 +144,7 @@ Expected: PASS
 ### Task 5: 跑全量回归并验证运行态
 
 **Files:**
+
 - Modify: `src/provider/request.js`
 - Modify: `src/provider/auth.js`
 - Modify: `src/provider/stream.js`

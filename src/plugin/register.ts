@@ -10,19 +10,50 @@ export const CODEX_POOL_CODEX_API = "codex-pool-codex";
 export const OPENCLAW_COMPAT_API = "openai-codex-responses";
 export const DEFAULT_REGISTRY_SOURCE = "codex-pool-openclaw";
 
-let defaultProvider;
+type AnyRecord = Record<string, any>;
+
+type ApiProviderLike = {
+  api: string;
+  stream(model: AnyRecord, context: AnyRecord, options?: AnyRecord): unknown;
+  streamSimple?(
+    model: AnyRecord,
+    context: AnyRecord,
+    options?: AnyRecord
+  ): unknown;
+};
+
+type PiAiRegistryLike = {
+  getApiProvider(api: string): ApiProviderLike | undefined;
+  registerApiProvider(provider: ApiProviderLike, source?: string): void;
+};
+
+type RegisterOptions = {
+  registry?: PiAiRegistryLike;
+  source?: string;
+  api?: string;
+  overrideExisting?: boolean;
+  codexProvider?: ApiProviderLike;
+  fallbackProvider?: ApiProviderLike;
+  [key: string]: any;
+};
+
+let defaultProvider: ApiProviderLike | undefined;
 const requireFromModule = createRequire(import.meta.url);
 
-function normalizeText(value) {
+function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-function isLoopbackHostname(hostname) {
+function isLoopbackHostname(hostname: string): boolean {
   const normalized = normalizeText(hostname).toLowerCase();
-  return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1";
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "localhost" ||
+    normalized === "::1"
+  );
 }
 
-function isLoopbackBaseUrl(baseUrl) {
+function isLoopbackBaseUrl(baseUrl: unknown): boolean {
   const raw = normalizeText(baseUrl);
   if (!raw) {
     return false;
@@ -35,7 +66,10 @@ function isLoopbackBaseUrl(baseUrl) {
   }
 }
 
-export function shouldRouteThroughCodexPool(model = {}, options = {}) {
+export function shouldRouteThroughCodexPool(
+  model: AnyRecord = {},
+  options: AnyRecord = {}
+): boolean {
   const providerId = normalizeText(model.provider).toLowerCase();
   const baseUrl = normalizeText(model.baseUrl);
   const apiKey = normalizeText(options.apiKey);
@@ -56,16 +90,24 @@ export function shouldRouteThroughCodexPool(model = {}, options = {}) {
     return true;
   }
 
-  return /\/backend-api(?:\/codex(?:\/responses)?)?$/i.test(baseUrl) || /\/v1(?:\/responses)?$/i.test(baseUrl);
-}
-
-function omitUndefinedEntries(value) {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, entry]) => entry !== undefined)
+  return (
+    /\/backend-api(?:\/codex(?:\/responses)?)?$/i.test(baseUrl) ||
+    /\/v1(?:\/responses)?$/i.test(baseUrl)
   );
 }
 
-function createStreamHandler(streamImpl, defaultOptions = {}) {
+function omitUndefinedEntries<T extends Record<string, unknown>>(
+  value: T
+): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined)
+  ) as Partial<T>;
+}
+
+function createStreamHandler(
+  streamImpl: (...args: any[]) => unknown,
+  defaultOptions: AnyRecord = {}
+): (model: AnyRecord, context: AnyRecord, options?: AnyRecord) => unknown {
   return (model, context, options = {}) =>
     streamImpl(model, context, {
       ...defaultOptions,
@@ -73,7 +115,9 @@ function createStreamHandler(streamImpl, defaultOptions = {}) {
     });
 }
 
-function normalizeRegistry(registry) {
+function normalizeRegistry(
+  registry: PiAiRegistryLike | undefined
+): PiAiRegistryLike {
   if (
     !registry ||
     typeof registry.getApiProvider !== "function" ||
@@ -87,16 +131,20 @@ function normalizeRegistry(registry) {
   return registry;
 }
 
-function getDefaultGlobalNodeModulesRoot(execPath = process.execPath) {
+function getDefaultGlobalNodeModulesRoot(execPath = process.execPath): string {
   return path.join(path.dirname(path.dirname(execPath)), "lib", "node_modules");
 }
 
 function buildDefaultPiAiSpecifiers({
   execPath = process.execPath,
   env = process.env
-} = {}) {
+}: {
+  execPath?: string;
+  env?: NodeJS.ProcessEnv;
+} = {}): string[] {
   const globalNodeModules =
-    env.OPENCLAW_NODE_MODULES?.trim() || getDefaultGlobalNodeModulesRoot(execPath);
+    env.OPENCLAW_NODE_MODULES?.trim() ||
+    getDefaultGlobalNodeModulesRoot(execPath);
   const specifiers = [
     "@mariozechner/pi-ai",
     pathToFileURL(
@@ -120,9 +168,12 @@ function buildDefaultPiAiSpecifiers({
 
 export async function loadPiAiRegistry({
   candidateSpecifiers = buildDefaultPiAiSpecifiers(),
-  importModule = (specifier) => import(specifier)
-} = {}) {
-  let lastError;
+  importModule = (specifier: string) => import(specifier)
+}: {
+  candidateSpecifiers?: string[];
+  importModule?: (specifier: string) => Promise<AnyRecord>;
+} = {}): Promise<PiAiRegistryLike> {
+  let lastError: unknown;
 
   for (const specifier of candidateSpecifiers) {
     try {
@@ -144,9 +195,13 @@ export async function loadPiAiRegistry({
 function buildDefaultPiAiRequireSpecifiers({
   execPath = process.execPath,
   env = process.env
-} = {}) {
+}: {
+  execPath?: string;
+  env?: NodeJS.ProcessEnv;
+} = {}): string[] {
   const globalNodeModules =
-    env.OPENCLAW_NODE_MODULES?.trim() || getDefaultGlobalNodeModulesRoot(execPath);
+    env.OPENCLAW_NODE_MODULES?.trim() ||
+    getDefaultGlobalNodeModulesRoot(execPath);
 
   return [
     "@mariozechner/pi-ai",
@@ -165,9 +220,12 @@ function buildDefaultPiAiRequireSpecifiers({
 
 export function loadPiAiRegistrySync({
   candidateSpecifiers = buildDefaultPiAiRequireSpecifiers(),
-  requireModule = (specifier) => requireFromModule(specifier)
-} = {}) {
-  let lastError;
+  requireModule = (specifier: string) => requireFromModule(specifier)
+}: {
+  candidateSpecifiers?: string[];
+  requireModule?: (specifier: string) => AnyRecord;
+} = {}): PiAiRegistryLike {
+  let lastError: unknown;
 
   for (const specifier of candidateSpecifiers) {
     try {
@@ -186,22 +244,27 @@ export function loadPiAiRegistrySync({
   );
 }
 
-export function createCodexPoolCodexProvider(options = {}) {
-  const {
-    api = CODEX_POOL_CODEX_API,
-    registry: _registry,
-    source: _source,
-    ...streamOptions
-  } = options;
+export function createCodexPoolCodexProvider(
+  options: RegisterOptions = {}
+): ApiProviderLike {
+  const { api = CODEX_POOL_CODEX_API, ...rawStreamOptions } = options;
+  const streamOptions = { ...rawStreamOptions };
+
+  delete streamOptions.registry;
+  delete streamOptions.source;
+  delete streamOptions.api;
 
   const normalizedStreamOptions = omitUndefinedEntries(streamOptions);
   const isDefaultProvider =
-    api === CODEX_POOL_CODEX_API && Object.keys(normalizedStreamOptions).length === 0;
+    api === CODEX_POOL_CODEX_API &&
+    Object.keys(normalizedStreamOptions).length === 0;
 
   if (isDefaultProvider) {
     if (!defaultProvider) {
       const stream = createStreamHandler(streamCodexPoolCodexResponses);
-      const streamSimple = createStreamHandler(streamSimpleCodexPoolCodexResponses);
+      const streamSimple = createStreamHandler(
+        streamSimpleCodexPoolCodexResponses
+      );
       defaultProvider = {
         api,
         stream,
@@ -212,7 +275,10 @@ export function createCodexPoolCodexProvider(options = {}) {
     return defaultProvider;
   }
 
-  const stream = createStreamHandler(streamCodexPoolCodexResponses, normalizedStreamOptions);
+  const stream = createStreamHandler(
+    streamCodexPoolCodexResponses,
+    normalizedStreamOptions
+  );
   const streamSimple = createStreamHandler(
     streamSimpleCodexPoolCodexResponses,
     normalizedStreamOptions
@@ -228,27 +294,38 @@ export function createOpenClawCompatibleProvider({
   api = OPENCLAW_COMPAT_API,
   codexProvider,
   fallbackProvider
-} = {}) {
+}: {
+  api?: string;
+  codexProvider?: ApiProviderLike;
+  fallbackProvider?: ApiProviderLike;
+} = {}): ApiProviderLike {
   if (!codexProvider) {
     throw new Error("codexProvider is required");
   }
 
-  const delegate = (method, model, context, options) => {
+  const delegate = (
+    method: "stream" | "streamSimple",
+    model: AnyRecord,
+    context: AnyRecord,
+    options?: AnyRecord
+  ) => {
     if (shouldRouteThroughCodexPool(model, options)) {
-      return codexProvider[method](model, context, options);
+      return codexProvider[method]?.(model, context, options);
     }
 
     if (fallbackProvider?.[method]) {
-      return fallbackProvider[method](model, context, options);
+      return fallbackProvider[method]?.(model, context, options);
     }
 
-    return codexProvider[method](model, context, options);
+    return codexProvider[method]?.(model, context, options);
   };
 
   return {
     api,
-    stream: (model, context, options) => delegate("stream", model, context, options),
-    streamSimple: (model, context, options) => delegate("streamSimple", model, context, options)
+    stream: (model, context, options) =>
+      delegate("stream", model, context, options),
+    streamSimple: (model, context, options) =>
+      delegate("streamSimple", model, context, options)
   };
 }
 
@@ -260,7 +337,7 @@ export function registerCodexPoolCodexProvider({
   codexProvider,
   fallbackProvider,
   ...providerOptions
-} = {}) {
+}: RegisterOptions = {}): boolean {
   const resolvedRegistry = normalizeRegistry(registry);
   const existingProvider = resolvedRegistry.getApiProvider(api);
 
@@ -287,7 +364,9 @@ export function registerCodexPoolCodexProvider({
   return true;
 }
 
-export async function registerCodexPoolCodexProviderInPiAi(options = {}) {
+export async function registerCodexPoolCodexProviderInPiAi(
+  options: RegisterOptions = {}
+): Promise<boolean> {
   const registry = options.registry ?? (await loadPiAiRegistry());
   return registerCodexPoolCodexProvider({
     ...options,

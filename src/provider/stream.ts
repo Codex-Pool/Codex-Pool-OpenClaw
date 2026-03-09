@@ -2,7 +2,11 @@ import { buildCodexPoolHeaders } from "./auth.js";
 import { AssistantMessageEventStream } from "./event-stream.js";
 import { buildCodexPoolRequestBody, resolveCodexPoolUrl } from "./request.js";
 import { processResponsesStream } from "./responses-shared.js";
-import { buildBaseOptions, clampReasoning, supportsXhigh } from "./simple-options.js";
+import {
+  buildBaseOptions,
+  clampReasoning,
+  supportsXhigh
+} from "./simple-options.js";
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
@@ -16,9 +20,42 @@ const CODEX_RESPONSE_STATUSES = new Set([
 ]);
 const OPENAI_BETA_RESPONSES_WEBSOCKETS = "responses_websockets=2026-02-06";
 const SESSION_WEBSOCKET_CACHE_TTL_MS = 5 * 60 * 1000;
-const websocketSessionCache = new Map();
+const websocketSessionCache = new Map<string, any>();
 
-function createOutput(model) {
+type AnyRecord = Record<string, any>;
+type StreamModel = AnyRecord & {
+  id: string;
+  provider?: string;
+  baseUrl: string;
+  headers?: HeadersInit;
+};
+
+type AssistantOutput = {
+  role: "assistant";
+  content: AnyRecord[];
+  api: string;
+  provider: string | undefined;
+  model: string;
+  usage: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    totalTokens: number;
+    cost: {
+      input: number;
+      output: number;
+      cacheRead: number;
+      cacheWrite: number;
+      total: number;
+    };
+  };
+  stopReason: string;
+  timestamp: number;
+  errorMessage?: string;
+};
+
+function createOutput(model: StreamModel): AssistantOutput {
   return {
     role: "assistant",
     content: [],
@@ -38,8 +75,14 @@ function createOutput(model) {
   };
 }
 
-function isRetryableError(status, errorText) {
-  if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+function isRetryableError(status: number, errorText: string): boolean {
+  if (
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504
+  ) {
     return true;
   }
 
@@ -48,7 +91,7 @@ function isRetryableError(status, errorText) {
   );
 }
 
-function sleep(ms, signal) {
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(new Error("Request was aborted"));
@@ -63,7 +106,10 @@ function sleep(ms, signal) {
   });
 }
 
-function resolveCodexPoolWebSocketUrl(baseUrl, pathMode) {
+function resolveCodexPoolWebSocketUrl(
+  baseUrl: string,
+  pathMode?: "codex" | "responses"
+): string {
   const url = new URL(resolveCodexPoolUrl(baseUrl, { pathMode }));
 
   if (url.protocol === "https:") {
@@ -77,10 +123,12 @@ function resolveCodexPoolWebSocketUrl(baseUrl, pathMode) {
   return url.toString();
 }
 
-async function parseErrorResponse(response) {
+async function parseErrorResponse(
+  response: Response
+): Promise<{ message: string; friendlyMessage?: string }> {
   const raw = await response.text();
   let message = raw || response.statusText || "Request failed";
-  let friendlyMessage;
+  let friendlyMessage: string | undefined;
 
   try {
     const parsed = JSON.parse(raw);
@@ -89,23 +137,35 @@ async function parseErrorResponse(response) {
     if (err) {
       const code = err.code || err.type || "";
 
-      if (/usage_limit_reached|usage_not_included|rate_limit_exceeded/i.test(code) || response.status === 429) {
-        const plan = err.plan_type ? ` (${String(err.plan_type).toLowerCase()} plan)` : "";
+      if (
+        /usage_limit_reached|usage_not_included|rate_limit_exceeded/i.test(
+          code
+        ) ||
+        response.status === 429
+      ) {
+        const plan = err.plan_type
+          ? ` (${String(err.plan_type).toLowerCase()} plan)`
+          : "";
         const mins = err.resets_at
           ? Math.max(0, Math.round((err.resets_at * 1000 - Date.now()) / 60000))
           : undefined;
         const when = mins !== undefined ? ` Try again in ~${mins} min.` : "";
-        friendlyMessage = `You have hit your ChatGPT usage limit${plan}.${when}`.trim();
+        friendlyMessage =
+          `You have hit your ChatGPT usage limit${plan}.${when}`.trim();
       }
 
       message = err.message || friendlyMessage || message;
     }
-  } catch {}
+  } catch {
+    // Fall back to plain-text error handling.
+  }
 
   return { message, friendlyMessage };
 }
 
-async function* parseSSE(response) {
+async function* parseSSE(
+  response: Response
+): AsyncGenerator<AnyRecord, void, void> {
   if (!response.body) {
     return;
   }
@@ -136,8 +196,10 @@ async function* parseSSE(response) {
 
         if (data && data !== "[DONE]") {
           try {
-            yield JSON.parse(data);
-          } catch {}
+            yield JSON.parse(data) as AnyRecord;
+          } catch {
+            // Ignore malformed SSE chunks and continue streaming.
+          }
         }
       }
 
@@ -146,7 +208,9 @@ async function* parseSSE(response) {
   }
 }
 
-async function* mapCodexEvents(events) {
+async function* mapCodexEvents(
+  events: AsyncIterable<AnyRecord>
+): AsyncGenerator<AnyRecord, void, void> {
   for await (const event of events) {
     const type = typeof event.type === "string" ? event.type : undefined;
 
@@ -157,7 +221,9 @@ async function* mapCodexEvents(events) {
     if (type === "error") {
       const code = event.code || "";
       const message = event.message || "";
-      throw new Error(`Codex error: ${message || code || JSON.stringify(event)}`);
+      throw new Error(
+        `Codex error: ${message || code || JSON.stringify(event)}`
+      );
     }
 
     if (type === "response.failed") {
@@ -170,7 +236,11 @@ async function* mapCodexEvents(events) {
       const normalizedResponse = response
         ? { ...response, status: normalizeCodexStatus(response.status) }
         : response;
-      yield { ...event, type: "response.completed", response: normalizedResponse };
+      yield {
+        ...event,
+        type: "response.completed",
+        response: normalizedResponse
+      };
       continue;
     }
 
@@ -178,7 +248,7 @@ async function* mapCodexEvents(events) {
   }
 }
 
-function normalizeCodexStatus(status) {
+function normalizeCodexStatus(status: unknown): string | undefined {
   if (typeof status !== "string") {
     return undefined;
   }
@@ -186,8 +256,8 @@ function normalizeCodexStatus(status) {
   return CODEX_RESPONSE_STATUSES.has(status) ? status : undefined;
 }
 
-function headersToRecord(headers) {
-  const out = {};
+function headersToRecord(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
 
   for (const [key, value] of headers.entries()) {
     out[key] = value;
@@ -196,27 +266,36 @@ function headersToRecord(headers) {
   return out;
 }
 
-function getWebSocketConstructor() {
+function getWebSocketConstructor(): any {
   const ctor = globalThis.WebSocket;
   return typeof ctor === "function" ? ctor : null;
 }
 
-function getWebSocketReadyState(socket) {
+function getWebSocketReadyState(socket: any): number | undefined {
   return typeof socket.readyState === "number" ? socket.readyState : undefined;
 }
 
-function isWebSocketReusable(socket) {
+function isWebSocketReusable(socket: any): boolean {
   const readyState = getWebSocketReadyState(socket);
   return readyState === undefined || readyState === 1;
 }
 
-function closeWebSocketSilently(socket, code = 1000, reason = "done") {
+function closeWebSocketSilently(
+  socket: any,
+  code = 1000,
+  reason = "done"
+): void {
   try {
     socket.close(code, reason);
-  } catch {}
+  } catch {
+    // Best-effort close only.
+  }
 }
 
-function scheduleSessionWebSocketExpiry(sessionId, entry) {
+function scheduleSessionWebSocketExpiry(
+  sessionId: string,
+  entry: AnyRecord
+): void {
   if (entry.idleTimer) {
     clearTimeout(entry.idleTimer);
   }
@@ -231,9 +310,9 @@ function scheduleSessionWebSocketExpiry(sessionId, entry) {
   }, SESSION_WEBSOCKET_CACHE_TTL_MS);
 }
 
-function extractWebSocketError(event) {
+function extractWebSocketError(event: unknown): Error {
   if (event && typeof event === "object" && "message" in event) {
-    const message = event.message;
+    const message = (event as AnyRecord).message;
     if (typeof message === "string" && message.length > 0) {
       return new Error(message);
     }
@@ -242,19 +321,24 @@ function extractWebSocketError(event) {
   return new Error("WebSocket error");
 }
 
-function extractWebSocketCloseError(event) {
+function extractWebSocketCloseError(event: unknown): Error {
   if (event && typeof event === "object") {
-    const code = "code" in event ? event.code : undefined;
-    const reason = "reason" in event ? event.reason : undefined;
+    const code =
+      "code" in (event as AnyRecord) ? (event as AnyRecord).code : undefined;
+    const reason =
+      "reason" in (event as AnyRecord)
+        ? (event as AnyRecord).reason
+        : undefined;
     const codeText = typeof code === "number" ? ` ${code}` : "";
-    const reasonText = typeof reason === "string" && reason.length > 0 ? ` ${reason}` : "";
+    const reasonText =
+      typeof reason === "string" && reason.length > 0 ? ` ${reason}` : "";
     return new Error(`WebSocket closed${codeText}${reasonText}`.trim());
   }
 
   return new Error("WebSocket closed");
 }
 
-async function decodeWebSocketData(data) {
+async function decodeWebSocketData(data: unknown): Promise<string | null> {
   if (typeof data === "string") {
     return data;
   }
@@ -270,14 +354,18 @@ async function decodeWebSocketData(data) {
   }
 
   if (data && typeof data === "object" && "arrayBuffer" in data) {
-    const arrayBuffer = await data.arrayBuffer();
+    const arrayBuffer = await (data as Blob).arrayBuffer();
     return new TextDecoder().decode(new Uint8Array(arrayBuffer));
   }
 
   return null;
 }
 
-async function connectWebSocket(url, headers, signal) {
+async function connectWebSocket(
+  url: string,
+  headers: Headers,
+  signal?: AbortSignal
+): Promise<any> {
   const WebSocketCtor = getWebSocketConstructor();
 
   if (!WebSocketCtor) {
@@ -289,7 +377,7 @@ async function connectWebSocket(url, headers, signal) {
 
   return new Promise((resolve, reject) => {
     let settled = false;
-    let socket;
+    let socket: any;
 
     try {
       socket = new WebSocketCtor(url, { headers: websocketHeaders });
@@ -307,7 +395,7 @@ async function connectWebSocket(url, headers, signal) {
       cleanup();
       resolve(socket);
     };
-    const onError = (event) => {
+    const onError = (event: unknown) => {
       if (settled) {
         return;
       }
@@ -316,7 +404,7 @@ async function connectWebSocket(url, headers, signal) {
       cleanup();
       reject(extractWebSocketError(event));
     };
-    const onClose = (event) => {
+    const onClose = (event: unknown) => {
       if (settled) {
         return;
       }
@@ -349,7 +437,12 @@ async function connectWebSocket(url, headers, signal) {
   });
 }
 
-async function acquireWebSocket(url, headers, sessionId, signal) {
+async function acquireWebSocket(
+  url: string,
+  headers: Headers,
+  sessionId: string | undefined,
+  signal?: AbortSignal
+): Promise<{ socket: any; release: (options?: { keep?: boolean }) => void }> {
   if (!sessionId) {
     const socket = await connectWebSocket(url, headers, signal);
     return {
@@ -406,7 +499,7 @@ async function acquireWebSocket(url, headers, sessionId, signal) {
   }
 
   const socket = await connectWebSocket(url, headers, signal);
-  const entry = { socket, busy: true };
+  const entry: AnyRecord = { socket, busy: true };
   websocketSessionCache.set(sessionId, entry);
 
   return {
@@ -431,11 +524,14 @@ async function acquireWebSocket(url, headers, sessionId, signal) {
   };
 }
 
-async function* parseWebSocket(socket, signal) {
-  const queue = [];
-  let pending = null;
+async function* parseWebSocket(
+  socket: any,
+  signal?: AbortSignal
+): AsyncGenerator<AnyRecord, void, void> {
+  const queue: AnyRecord[] = [];
+  let pending: (() => void) | null = null;
   let done = false;
-  let failed = null;
+  let failed: Error | null = null;
   let sawCompletion = false;
   const wake = () => {
     if (!pending) {
@@ -446,13 +542,17 @@ async function* parseWebSocket(socket, signal) {
     pending = null;
     resolve();
   };
-  const onMessage = (event) => {
+  const onMessage = (event: unknown) => {
     void (async () => {
-      if (!event || typeof event !== "object" || !("data" in event)) {
+      if (
+        !event ||
+        typeof event !== "object" ||
+        !("data" in (event as AnyRecord))
+      ) {
         return;
       }
 
-      const text = await decodeWebSocketData(event.data);
+      const text = await decodeWebSocketData((event as AnyRecord).data);
       if (!text) {
         return;
       }
@@ -468,15 +568,17 @@ async function* parseWebSocket(socket, signal) {
 
         queue.push(parsed);
         wake();
-      } catch {}
+      } catch {
+        // Ignore malformed WebSocket payloads and continue streaming.
+      }
     })();
   };
-  const onError = (event) => {
+  const onError = (event: unknown) => {
     failed = extractWebSocketError(event);
     done = true;
     wake();
   };
-  const onClose = (event) => {
+  const onClose = (event: unknown) => {
     if (sawCompletion) {
       done = true;
       wake();
@@ -508,7 +610,7 @@ async function* parseWebSocket(socket, signal) {
       }
 
       if (queue.length > 0) {
-        yield queue.shift();
+        yield queue.shift()!;
         continue;
       }
 
@@ -516,7 +618,7 @@ async function* parseWebSocket(socket, signal) {
         break;
       }
 
-      await new Promise((resolve) => {
+      await new Promise<void>((resolve) => {
         pending = resolve;
       });
     }
@@ -536,15 +638,34 @@ async function* parseWebSocket(socket, signal) {
   }
 }
 
-async function processWebSocketStream(url, body, headers, output, stream, model, onStart, options) {
-  const { socket, release } = await acquireWebSocket(url, headers, options?.sessionId, options?.signal);
+async function processWebSocketStream(
+  url: string,
+  body: AnyRecord,
+  headers: Headers,
+  output: AssistantOutput,
+  stream: AssistantMessageEventStream,
+  model: StreamModel,
+  onStart: () => void,
+  options?: AnyRecord
+): Promise<void> {
+  const { socket, release } = await acquireWebSocket(
+    url,
+    headers,
+    options?.sessionId,
+    options?.signal
+  );
   let keepConnection = true;
 
   try {
     socket.send(JSON.stringify({ type: "response.create", ...body }));
     onStart();
     stream.push({ type: "start", partial: output });
-    await processResponsesStream(mapCodexEvents(parseWebSocket(socket, options?.signal)), output, stream, model);
+    await processResponsesStream(
+      mapCodexEvents(parseWebSocket(socket, options?.signal)),
+      output,
+      stream as unknown as { push(event: AnyRecord): void },
+      model
+    );
 
     if (options?.signal?.aborted) {
       keepConnection = false;
@@ -557,10 +678,14 @@ async function processWebSocketStream(url, body, headers, output, stream, model,
   }
 }
 
-export function streamCodexPoolCodexResponses(model, context, options = {}) {
+export function streamCodexPoolCodexResponses(
+  model: StreamModel,
+  context: AnyRecord,
+  options: AnyRecord = {}
+): AssistantMessageEventStream {
   const stream = new AssistantMessageEventStream();
 
-  (async () => {
+  void (async () => {
     const output = createOutput(model);
 
     try {
@@ -616,8 +741,8 @@ export function streamCodexPoolCodexResponses(model, context, options = {}) {
         }
       }
 
-      let response;
-      let lastError;
+      let response: Response | undefined;
+      let lastError: Error | undefined;
 
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
         if (options?.signal?.aborted) {
@@ -625,19 +750,25 @@ export function streamCodexPoolCodexResponses(model, context, options = {}) {
         }
 
         try {
-          response = await fetch(resolveCodexPoolUrl(model.baseUrl, { pathMode: options?.pathMode }), {
-            method: "POST",
-            headers,
-            body: bodyJson,
-            signal: options?.signal
-          });
+          response = await fetch(
+            resolveCodexPoolUrl(model.baseUrl, { pathMode: options?.pathMode }),
+            {
+              method: "POST",
+              headers,
+              body: bodyJson,
+              signal: options?.signal
+            }
+          );
 
           if (response.ok) {
             break;
           }
 
           const errorText = await response.text();
-          if (attempt < MAX_RETRIES && isRetryableError(response.status, errorText)) {
+          if (
+            attempt < MAX_RETRIES &&
+            isRetryableError(response.status, errorText)
+          ) {
             const delayMs = BASE_DELAY_MS * 2 ** attempt;
             await sleep(delayMs, options?.signal);
             continue;
@@ -651,14 +782,20 @@ export function streamCodexPoolCodexResponses(model, context, options = {}) {
           throw new Error(info.friendlyMessage || info.message);
         } catch (error) {
           if (error instanceof Error) {
-            if (error.name === "AbortError" || error.message === "Request was aborted") {
-              throw new Error("Request was aborted");
+            if (
+              error.name === "AbortError" ||
+              error.message === "Request was aborted"
+            ) {
+              throw new Error("Request was aborted", { cause: error });
             }
           }
 
           lastError = error instanceof Error ? error : new Error(String(error));
 
-          if (attempt < MAX_RETRIES && !lastError.message.includes("usage limit")) {
+          if (
+            attempt < MAX_RETRIES &&
+            !lastError.message.includes("usage limit")
+          ) {
             const delayMs = BASE_DELAY_MS * 2 ** attempt;
             await sleep(delayMs, options?.signal);
             continue;
@@ -677,7 +814,12 @@ export function streamCodexPoolCodexResponses(model, context, options = {}) {
       }
 
       stream.push({ type: "start", partial: output });
-      await processResponsesStream(mapCodexEvents(parseSSE(response)), output, stream, model);
+      await processResponsesStream(
+        mapCodexEvents(parseSSE(response)),
+        output,
+        stream as unknown as { push(event: AnyRecord): void },
+        model
+      );
 
       if (options?.signal?.aborted) {
         throw new Error("Request was aborted");
@@ -687,7 +829,8 @@ export function streamCodexPoolCodexResponses(model, context, options = {}) {
       stream.end();
     } catch (error) {
       output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-      output.errorMessage = error instanceof Error ? error.message : String(error);
+      output.errorMessage =
+        error instanceof Error ? error.message : String(error);
       stream.push({ type: "error", reason: output.stopReason, error: output });
       stream.end();
     }
@@ -696,7 +839,11 @@ export function streamCodexPoolCodexResponses(model, context, options = {}) {
   return stream;
 }
 
-export function streamSimpleCodexPoolCodexResponses(model, context, options = {}) {
+export function streamSimpleCodexPoolCodexResponses(
+  model: StreamModel,
+  context: AnyRecord,
+  options: AnyRecord = {}
+): AssistantMessageEventStream {
   const apiKey = options?.apiKey;
 
   if (!apiKey) {
