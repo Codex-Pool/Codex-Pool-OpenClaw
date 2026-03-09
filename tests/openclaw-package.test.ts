@@ -180,6 +180,8 @@ describe("OpenClaw package metadata", () => {
       true
     );
     await expect(pathExists("tests/dist-smoke.test.ts")).resolves.toBe(true);
+    expect(ciWorkflow).toContain("npm install -g npm@11.8.0");
+    expect(publishWorkflow).toContain("npm install -g npm@11.8.0");
     expect(ciWorkflow).toContain("run: npm run smoke:dist");
     expect(publishWorkflow).toContain("run: npm run smoke:dist");
   });
