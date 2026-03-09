@@ -3,10 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./preload": "./src/preload.js"
+  },
+  "openclaw": {
+    "extensions": [
+      "./src/openclaw-plugin.js"
+    ]
+  },
   "description": "OpenClaw custom provider/plugin for Codex-Pool Codex-style requests",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest"
+  },
+  "dependencies": {
+    "partial-json": "^0.1.7"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

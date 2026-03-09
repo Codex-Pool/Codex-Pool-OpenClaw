@@ -1,0 +1,12 @@
+{
+  "id": "codex-pool-openclaw",
+  "name": "Codex-Pool OpenClaw",
+  "description": "OpenClaw provider plugin for Codex-Pool Codex-style requests",
+  "version": "0.1.0",
+  "providers": ["codex-pool"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

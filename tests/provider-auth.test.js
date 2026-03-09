@@ -24,6 +24,44 @@ describe("buildCodexPoolHeaders", () => {
     expect(headers.get("chatgpt-account-id")).toBe("acc_123");
   });
 
+  test("显式提供 sessionId 时附带 session_id", () => {
+    const headers = buildCodexPoolHeaders({
+      apiKey: "cp_test_key",
+      sessionId: "session-42"
+    });
+
+    expect(headers.get("session_id")).toBe("session-42");
+  });
+
+  test("会继承 model headers 并允许 runtime headers 覆盖", () => {
+    const headers = buildCodexPoolHeaders({
+      apiKey: "cp_test_key",
+      initHeaders: {
+        "x-model-only": "keep-me",
+        "x-from-model": "model",
+        originator: "model-originator"
+      },
+      extraHeaders: {
+        "x-from-model": "runtime",
+        "x-extra": "1"
+      }
+    });
+
+    expect(headers.get("x-model-only")).toBe("keep-me");
+    expect(headers.get("x-from-model")).toBe("runtime");
+    expect(headers.get("x-extra")).toBe("1");
+  });
+
+  test("默认头细节对齐官方 codex provider", () => {
+    const headers = buildCodexPoolHeaders({
+      apiKey: "cp_test_key"
+    });
+
+    expect(headers.get("OpenAI-Beta")).toBe("responses=experimental");
+    expect(headers.get("originator")).toBe("pi");
+    expect(headers.get("User-Agent")).toMatch(/^pi \(/);
+  });
+
   test("缺少 apiKey 时抛出可读错误", () => {
     expect(() => buildCodexPoolHeaders({ apiKey: "" })).toThrow(
       "Missing Codex-Pool API key"
