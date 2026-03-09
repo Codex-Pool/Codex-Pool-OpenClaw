@@ -40,3 +40,6 @@ jobs:
 
       - name: Smoke dist output
         run: npm run smoke:dist
+
+      - name: Inspect package contents
+        run: npm pack --dry-run

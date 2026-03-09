@@ -55,6 +55,25 @@ type AssistantOutput = {
   errorMessage?: string;
 };
 
+class CodexPoolHttpError extends Error {
+  readonly status: number;
+  readonly retryable: boolean;
+
+  constructor(
+    message: string,
+    {
+      status,
+      retryable,
+      cause
+    }: { status: number; retryable: boolean; cause?: unknown }
+  ) {
+    super(message, cause === undefined ? undefined : { cause });
+    this.name = "CodexPoolHttpError";
+    this.status = status;
+    this.retryable = retryable;
+  }
+}
+
 function createOutput(model: StreamModel): AssistantOutput {
   return {
     role: "assistant",
@@ -89,6 +108,22 @@ function isRetryableError(status: number, errorText: string): boolean {
   return /rate.?limit|overloaded|service.?unavailable|upstream.?connect|connection.?refused/i.test(
     errorText
   );
+}
+
+function shouldRetryRequestError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return true;
+  }
+
+  if (error.name === "AbortError" || error.message === "Request was aborted") {
+    return false;
+  }
+
+  if (error instanceof CodexPoolHttpError) {
+    return error.retryable;
+  }
+
+  return true;
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -181,6 +216,7 @@ async function* parseSSE(
     }
 
     buffer += decoder.decode(value, { stream: true });
+    buffer = buffer.replace(/\r\n/g, "\n").replace(/\r(?!\n)/g, "\n");
     let index = buffer.indexOf("\n\n");
 
     while (index !== -1) {
@@ -664,7 +700,8 @@ async function processWebSocketStream(
       mapCodexEvents(parseWebSocket(socket, options?.signal)),
       output,
       stream as unknown as { push(event: AnyRecord): void },
-      model
+      model,
+      options
     );
 
     if (options?.signal?.aborted) {
@@ -765,10 +802,8 @@ export function streamCodexPoolCodexResponses(
           }
 
           const errorText = await response.text();
-          if (
-            attempt < MAX_RETRIES &&
-            isRetryableError(response.status, errorText)
-          ) {
+          const retryable = isRetryableError(response.status, errorText);
+          if (attempt < MAX_RETRIES && retryable) {
             const delayMs = BASE_DELAY_MS * 2 ** attempt;
             await sleep(delayMs, options?.signal);
             continue;
@@ -779,7 +814,11 @@ export function streamCodexPoolCodexResponses(
             statusText: response.statusText
           });
           const info = await parseErrorResponse(fakeResponse);
-          throw new Error(info.friendlyMessage || info.message);
+          throw new CodexPoolHttpError(info.friendlyMessage || info.message, {
+            status: response.status,
+            retryable,
+            cause: errorText
+          });
         } catch (error) {
           if (error instanceof Error) {
             if (
@@ -792,10 +831,7 @@ export function streamCodexPoolCodexResponses(
 
           lastError = error instanceof Error ? error : new Error(String(error));
 
-          if (
-            attempt < MAX_RETRIES &&
-            !lastError.message.includes("usage limit")
-          ) {
+          if (attempt < MAX_RETRIES && shouldRetryRequestError(lastError)) {
             const delayMs = BASE_DELAY_MS * 2 ** attempt;
             await sleep(delayMs, options?.signal);
             continue;
@@ -818,7 +854,8 @@ export function streamCodexPoolCodexResponses(
         mapCodexEvents(parseSSE(response)),
         output,
         stream as unknown as { push(event: AnyRecord): void },
-        model
+        model,
+        options
       );
 
       if (options?.signal?.aborted) {

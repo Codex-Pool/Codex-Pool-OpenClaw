@@ -183,6 +183,21 @@ describe("OpenClaw package metadata", () => {
     expect(ciWorkflow).toContain("npm install -g npm@11.8.0");
     expect(publishWorkflow).toContain("npm install -g npm@11.8.0");
     expect(ciWorkflow).toContain("run: npm run smoke:dist");
+    expect(ciWorkflow).toContain("run: npm pack --dry-run");
     expect(publishWorkflow).toContain("run: npm run smoke:dist");
+    expect(publishWorkflow).toContain("run: npm pack --dry-run");
+  });
+
+  test("publish workflow 只允许从 origin/main 当前头部正式发布", async () => {
+    const publishWorkflow = await readText(".github/workflows/publish.yml");
+
+    expect(publishWorkflow).toContain("fetch-depth: 0");
+    expect(publishWorkflow).toContain("git fetch origin main --depth=1");
+    expect(publishWorkflow).toContain(
+      'MAIN_SHA="$(git rev-parse origin/main)"'
+    );
+    expect(publishWorkflow).toContain(
+      'if [ "$GITHUB_SHA" != "$MAIN_SHA" ]; then'
+    );
   });
 });

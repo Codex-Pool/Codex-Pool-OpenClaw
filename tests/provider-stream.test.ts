@@ -305,6 +305,59 @@ describe("streamCodexPoolCodexResponses", () => {
     expect(result.content[0]).toMatchObject({ type: "text", text: "pong" });
   });
 
+  test("CRLF 分隔的 SSE 事件也能被正确解析", async () => {
+    const { baseUrl } = await createServer(async (_req, res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(
+        [
+          'data: {"type":"response.output_item.added","item":{"type":"message","content":[]}}',
+          "",
+          'data: {"type":"response.content_part.added","part":{"type":"output_text","text":"","annotations":[]}}',
+          "",
+          'data: {"type":"response.output_text.delta","delta":"pong"}',
+          "",
+          'data: {"type":"response.output_item.done","item":{"type":"message","id":"msg_crlf","content":[{"type":"output_text","text":"pong","annotations":[]}]}}',
+          "",
+          'data: {"type":"response.done","response":{"status":"completed"}}',
+          "",
+          ""
+        ].join("\r\n")
+      );
+      res.end();
+    });
+
+    const stream = streamCodexPoolCodexResponses(
+      {
+        id: "gpt-5.4",
+        provider: "codex-pool",
+        api: "openai-codex-responses",
+        baseUrl,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+      },
+      {
+        systemPrompt: "",
+        messages: [{ role: "user", content: "ping" }]
+      },
+      { apiKey: "cp_stream_key" }
+    );
+
+    const events = await collectEvents(stream);
+    const result = await stream.result();
+
+    expect(events.map((event) => event.type)).toEqual([
+      "start",
+      "text_start",
+      "text_delta",
+      "text_end",
+      "done"
+    ]);
+    expect(result.content[0]).toMatchObject({
+      type: "text",
+      text: "pong",
+      textSignature: "msg_crlf"
+    });
+  });
+
   test("429 后会按官方逻辑重试再成功", async () => {
     let attempts = 0;
     const { baseUrl } = await createServer(async (_req, res) => {
@@ -360,6 +413,49 @@ describe("streamCodexPoolCodexResponses", () => {
     const result = await stream.result();
     expect(attempts).toBe(2);
     expect(result.content[0]).toMatchObject({ type: "text", text: "pong" });
+  });
+
+  test("401 invalid_api_key 不会被误判为可重试错误", async () => {
+    vi.useFakeTimers();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: "invalid_api_key",
+              message: "bad key"
+            }
+          }),
+          {
+            status: 401,
+            headers: { "content-type": "application/json" }
+          }
+        );
+      });
+
+    const stream = streamCodexPoolCodexResponses(
+      {
+        id: "gpt-5.4",
+        provider: "codex-pool",
+        api: "openai-codex-responses",
+        baseUrl: "http://127.0.0.1:8091"
+      },
+      {
+        systemPrompt: "",
+        messages: [{ role: "user", content: "ping" }]
+      },
+      { apiKey: "cp_stream_key" }
+    );
+
+    const eventsPromise = collectEvents(stream);
+    await vi.runAllTimersAsync();
+    const events = await eventsPromise;
+    const result = await stream.result();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(events.at(-1)?.type).toBe("error");
+    expect(result.errorMessage).toBe("bad key");
   });
 
   test("缺少 apiKey 时会直接返回错误事件", async () => {
@@ -628,5 +724,56 @@ describe("streamCodexPoolCodexResponses", () => {
     expect(finalEvent?.type).toBe("error");
     expect(result.errorMessage).toContain("ChatGPT usage limit");
     expect(result.errorMessage).toContain("Try again");
+  });
+
+  test("会把 service tier 定价钩子透传给响应流处理", async () => {
+    const applyServiceTierPricing = vi.fn();
+
+    const { baseUrl } = await createServer(async (_req, res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(
+        [
+          'data: {"type":"response.output_item.added","item":{"type":"message","content":[]}}',
+          "",
+          'data: {"type":"response.content_part.added","part":{"type":"output_text","text":"","annotations":[]}}',
+          "",
+          'data: {"type":"response.output_text.delta","delta":"pong"}',
+          "",
+          'data: {"type":"response.output_item.done","item":{"type":"message","id":"msg_service_tier","content":[{"type":"output_text","text":"pong","annotations":[]}]}}',
+          "",
+          'data: {"type":"response.done","response":{"status":"completed","service_tier":"priority","usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}}',
+          "",
+          ""
+        ].join("\n")
+      );
+      res.end();
+    });
+
+    const stream = streamCodexPoolCodexResponses(
+      {
+        id: "gpt-5.4",
+        provider: "codex-pool",
+        api: "openai-codex-responses",
+        baseUrl,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+      },
+      {
+        systemPrompt: "",
+        messages: [{ role: "user", content: "ping" }]
+      },
+      {
+        apiKey: "cp_stream_key",
+        applyServiceTierPricing
+      }
+    );
+
+    await collectEvents(stream);
+    const result = await stream.result();
+
+    expect(applyServiceTierPricing).toHaveBeenCalledTimes(1);
+    expect(applyServiceTierPricing).toHaveBeenCalledWith(
+      result.usage,
+      "priority"
+    );
   });
 });
